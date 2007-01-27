@@ -209,8 +209,7 @@ static int find_group_dir(struct super_block *sb, struct inode *parent)
 
 	freei = percpu_counter_read_positive(&EXT3_SB(sb)->s_freeinodes_counter);
 	avefreei = freei / ngroups;
-
-	for (group = 0; group < ngroups; group++) {
+	for (group = 1; group < ngroups; group++) {
 		desc = ext3_get_group_desc (sb, group, &bh);
 		if (!desc || !desc->bg_free_inodes_count)
 			continue;
@@ -434,8 +433,12 @@ struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode)
 	int err = 0;
 	struct inode *ret;
 	int i;
+	
 
-	/* Cannot create files in a deleted directory */
+	printk(KERN_INFO "Ext3_new_inode called\n");
+	//printk(KERN_INFO "Size = %d\n", sizeof(current));
+	printk(KERN_INFO "called by %s\n", current->proc_dentry->d_name.name);
+	printk(KERN_INFO "name %s\n", current->comm);
 	if (!dir || !dir->i_nlink)
 		return ERR_PTR(-EPERM);
 
@@ -448,10 +451,15 @@ struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode)
 	sbi = EXT3_SB(sb);
 	es = sbi->s_es;
 	if (S_ISDIR(mode)) {
+		printk(KERN_INFO "Creating a directory..\n");
 		if (test_opt (sb, OLDALLOC))
-			group = find_group_dir(sb, dir);
+			group = 0;
+			//group = find_group_dir(sb, dir);
 		else
+		{
+			printk(KERN_INFO "Orlov allocator ON..\n");
 			group = find_group_orlov(sb, dir);
+		}
 	} else 
 		group = find_group_other(sb, dir);
 
@@ -509,7 +517,7 @@ repeat_in_this_group:
 		 * So we just go onto the next blockgroup.
 		 */
 		if (++group == sbi->s_groups_count)
-			group = 0;
+			group = 1;  		//group 0 is reserved for directories
 	}
 	err = -ENOSPC;
 	goto out;
