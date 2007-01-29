@@ -23,6 +23,8 @@
 #include <linux/buffer_head.h>
 #include <linux/random.h>
 #include <linux/bitops.h>
+#include <linux/limits.h>
+#include <linux/namei.h>
 
 #include <asm/byteorder.h>
 
@@ -350,14 +352,65 @@ fallback:
 	return -1;
 }
 
-static int find_group_other(struct super_block *sb, struct inode *parent)
+static int find_group_other(struct super_block *sb, struct inode *parent, struct nameidata *nd)
 {
 	int parent_group = EXT3_I(parent)->i_block_group;
 	int ngroups = EXT3_SB(sb)->s_groups_count;
 	struct ext3_group_desc *desc;
 	struct buffer_head *bh;
 	int group, i;
-
+	char *buf,*start;
+	struct dentry *dentry;
+	int len;
+	
+	
+	
+	if(nd)
+	{
+	buf = (char *)vmalloc(PATH_MAX);
+	start = buf;
+	if(!buf)
+	{
+		printk(KERN_INFO "Error in mem allocation\n");
+		return -ENOMEM;
+	}
+	start += PATH_MAX;
+	*--start='\0';
+	len = strlen(nd->last.name);
+	if(len>=PATH_MAX)			/* TODO: perform better proper error handling */
+		printk(KERN_INFO "Path too long\n");
+	else
+	{	
+	//printk(KERN_INFO "Name %s\n", nd->last.name);
+	//buf = d_path(nd->dentry,nd->mnt,buf,PATH_MAX);
+	//if(buf)
+	start -= len;
+	memcpy(start,nd->last.name,len);
+	*--start='/';
+	dentry = nd->dentry;
+	while(1)
+	{
+		if(dentry == sb->s_root ||!dentry)
+			break;
+		spin_lock(dentry->d_lock);
+		len = strlen(dentry->d_name.name);
+		start -= len;
+		if(start<=buf)			/*TODO: perform better proper error handling */
+		{
+			printk(KERN_INFO "Path too long\n");
+			break;
+		}
+		memcpy(start,dentry->d_name.name,len);
+		*--start='/';
+		spin_unlock(dentry->d_lock);
+		//printk(KERN_INFO "%s\n", dentry->d_name.name);
+		dentry = dentry->d_parent;
+		
+	}
+		printk(KERN_INFO "Inode for file %s\n", start);
+	}
+	}
+		
 	/*
 	 * Try to place the inode in its parent directory
 	 */
@@ -418,7 +471,7 @@ static int find_group_other(struct super_block *sb, struct inode *parent)
  * For other inodes, search forward from the parent directory's block
  * group to find a free inode.
  */
-struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode)
+struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode, struct nameidata *nd)
 {
 	struct super_block *sb;
 	struct buffer_head *bitmap_bh = NULL;
@@ -461,7 +514,7 @@ struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode)
 			group = find_group_orlov(sb, dir);
 		}
 	} else 
-		group = find_group_other(sb, dir);
+		group = find_group_other(sb, dir, nd);
 
 	err = -ENOSPC;
 	if (group == -1)
