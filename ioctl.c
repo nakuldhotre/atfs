@@ -14,7 +14,138 @@
 #include <linux/ext3_jbd.h>
 #include <linux/time.h>
 #include <asm/uaccess.h>
-
+#include <linux/types.h>
+#include <linux/vmalloc.h>
+#define SUCCESS 0
+#define UNALLOC -1
+#define NOTFOUND -2
+static int Device_Open = 0;
+struct atfs_appl atfs_appl_ll;
+void init_ll()
+{
+	INIT_LIST_HEAD(&atfs_appl_ll.appl_list);
+}
+/* add_appl() creates  and entry for the application in the db*/
+void add_appl(char *name)
+{
+	struct atfs_appl *temp;
+	temp = (struct atfs_appl *)vmalloc(sizeof(struct atfs_appl));  // TODO: find the appropriate kernel space memory alloc function 
+	strcpy(temp->appl_name,name);
+	printk(KERN_ALERT "ADDING APPLICATION = %s\n",temp->appl_name);
+	INIT_LIST_HEAD(&temp->acc_pat1.acc_pat_list);
+	list_add_tail(&(temp->appl_list),&atfs_appl_ll.appl_list);
+}
+/*add_acc_pat() adds a new pattern to the comp 
+Note: makes an entry for the pattern the components are not added*/
+void add_acc_pat(char appl_name[255],int pat_no,int group_no)
+{
+	struct atfs_acc_pat *temp;
+	struct atfs_appl *appl_temp;
+	struct list_head *appl_pos;
+	printk(KERN_ALERT "INSIDE add_acc_pat\n");
+	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
+	{
+		appl_temp = list_entry(appl_pos, struct atfs_appl, appl_list);
+		if(!strcmp(appl_temp->appl_name,appl_name))
+		{
+			temp = (struct atfs_acc_pat *)vmalloc(sizeof(struct atfs_acc_pat));
+			temp->pat_no = pat_no;
+			temp->alloc_group_num = group_no;
+			INIT_LIST_HEAD(&temp->comp1.acc_pat_comp_list);
+			list_add_tail(&(temp->acc_pat_list),&(appl_temp->acc_pat1.acc_pat_list));
+			printk(KERN_ALERT "Adding Access pattern no %d for appl %s and grp no %d\n",pat_no,appl_name,group_no);
+			return ;
+		}
+	}
+	//NOT FOUND ROUTINE  ... this case should not occur if we do proper validation at config file parsing time 
+}
+/* add_comp_to_acc_pat() addes a compenent to the pattern ... pattern is specified by appl_name,pat_no */
+void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp comp)
+{
+	struct atfs_appl *appl_temp;
+	struct atfs_acc_pat *appl_pat_temp;
+	struct atfs_acc_pat_comp *comp_temp;
+	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
+	comp_temp = (struct atfs_acc_pat_comp *)vmalloc(sizeof(struct atfs_acc_pat_comp));
+	strcpy(comp_temp->path,comp.path);
+	comp_temp->estd_size = comp.estd_size;
+	comp_temp->type = comp.type;
+	
+	//printk(KERN_ALERT "%s %d %s\n",appl_name,pat_no,comp.path);
+	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
+	{
+		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
+		if(!strcmp(appl_temp->appl_name,appl_name))
+		{
+			list_for_each(appl_pat_pos,&(appl_temp->acc_pat1.acc_pat_list))
+			{
+				appl_pat_temp = list_entry(appl_pat_pos,struct atfs_acc_pat,acc_pat_list);
+				if(appl_pat_temp->pat_no==pat_no)
+				{
+					list_add_tail(&comp_temp->acc_pat_comp_list,&(appl_pat_temp->comp1.acc_pat_comp_list));
+					printk(KERN_ALERT "ADDED %s to %s pat no %d\n",comp.path,appl_name,pat_no);
+					return ;
+				}
+			}
+		}
+	}
+	//NOT FOUND ROUTINE
+}
+/*displays all the access patterns specific to an application i.e appl_name ....   this is just a test and debug function and of no other use */
+void display_appl_pats(char appl_name[255])
+{
+	struct atfs_acc_pat *appl_pat_temp;
+	struct atfs_appl *appl_temp;
+	struct atfs_acc_pat_comp *comp_temp;
+	struct list_head *appl_pat_pos,*appl_pos,*appl_pat_comp_pos;
+		printk(KERN_ALERT "Inside display_appl_pat \n");
+	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
+	{
+		appl_temp = list_entry(appl_pos, struct atfs_appl, appl_list);
+		if(!strcmp(appl_temp->appl_name,appl_name))
+		{
+			list_for_each(appl_pat_pos,&(appl_temp->acc_pat1.acc_pat_list))
+			{
+				appl_pat_temp = list_entry(appl_pat_pos,struct atfs_acc_pat,acc_pat_list);
+				printk("Pattern no %d\n",appl_pat_temp->pat_no);
+				list_for_each(appl_pat_comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
+				{
+					comp_temp = list_entry(appl_pat_comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
+					printk("%s \n",comp_temp->path);
+				}
+			}
+		}
+	}
+}
+/* find_group_no() returns the assigned group number for component based on the access pattern ... */
+int find_group_num(char appl_name[255],char *path)
+{
+	struct atfs_appl *appl_temp;
+	struct atfs_acc_pat *appl_pat_temp;
+	struct atfs_acc_pat_comp *comp_temp;
+	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
+	int i=0;
+	printk(KERN_ALERT "Finding %s %s\n",appl_name,path);
+	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
+	{
+		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
+		if(!strcmp(appl_temp->appl_name,appl_name))
+		{
+			list_for_each(appl_pat_pos,&(appl_temp->acc_pat1.acc_pat_list))
+			{
+				appl_pat_temp = list_entry(appl_pat_pos,struct atfs_acc_pat,acc_pat_list);
+				
+				list_for_each(comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
+				{
+					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
+					if(!strcmp(comp_temp->path,path))
+						return appl_pat_temp->alloc_group_num; 
+				} 
+			}
+		}
+	}
+		return NOTFOUND;   
+}
 struct ext3_our_struct info_array[255];
 __u8 info_array_count;
 
@@ -24,7 +155,14 @@ int ext3_ioctl (struct inode * inode, struct file * filp, unsigned int cmd,
 	struct ext3_inode_info *ei = EXT3_I(inode);
 	unsigned int flags;
 	unsigned short rsv_window_size;
-
+	int i,copy_status;
+	struct atfs_u_appl *temp,*temp1;
+	struct atfs_u_acc_pat *temp2;
+	struct atfs_u_acc_pat_comp *temp3;
+	struct atfs_acc_pat_comp temp4;
+	temp1 = (struct atfs_u_appl *)vmalloc(sizeof(struct atfs_u_appl )); 
+	temp2 = (struct atfs_u_acc_pat *)vmalloc(sizeof(struct atfs_u_acc_pat )); 
+	temp3 = (struct atfs_u_acc_pat_comp *)vmalloc(sizeof(struct atfs_u_acc_pat_comp ));
 	ext3_debug ("cmd = %u, arg = %lu\n", cmd, arg);
 
 	switch (cmd) {
@@ -262,6 +400,50 @@ flags_err:
 		info_array[info_array_count].type = input.type;
 		info_array[info_array_count].size = input.size;
 		info_array_count++;
+		return 0;
+	case EXT3_IOC_ADDTREE:
+		init_ll();   // Creating a completly new linked list each time ioctl call is made
+		temp = (struct atfs_u_appl *)arg;
+		printk(KERN_INFO "\ndb_dev: from user app %x\n temp1 = %x\n",temp,temp1);
+		copy_status = copy_from_user(temp1,temp,sizeof(struct atfs_u_appl));
+		if(copy_status==0)
+		{	
+			while(1)
+			{
+				//Make an entry for the application into the linked list 
+				add_appl(temp1->appl_name);
+				if(copy_from_user(temp2,temp1->app_pat,sizeof(struct atfs_u_acc_pat))==0)
+				{
+					i = 0;
+					while(1)
+					{
+						add_acc_pat(temp1->appl_name,i,temp2->alloc_group_num);
+						if(copy_from_user(temp3,temp2->pat_comp,sizeof(struct atfs_u_acc_pat_comp))==0)
+						{
+							while(1)
+							{
+							
+								temp4.type = temp3->type;
+								strcpy(temp4.path,temp3->path);
+								temp4.estd_size = temp3->estd_size;
+								add_comp_to_acc_pat(temp1->appl_name,i,temp4);
+								if(temp3->next == NULL)
+									break;
+								copy_from_user(temp3,temp3->next,sizeof(struct atfs_u_acc_pat_comp));
+							}
+						}
+						i++;
+						if(temp2->next == NULL)
+							break;
+						copy_from_user(temp2,temp2->next,sizeof(struct atfs_u_acc_pat));
+					}
+				}
+				//display_appl_pats(temp1->appl_name);
+				if(temp1->next == NULL)
+					break;
+				copy_from_user (temp1,temp1->next,sizeof(struct atfs_u_appl));
+			}
+		}
 		return 0;
 	}
 	default:{
