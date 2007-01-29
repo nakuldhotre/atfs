@@ -392,7 +392,7 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 	{
 		if(dentry == sb->s_root ||!dentry)
 			break;
-		spin_lock(dentry->d_lock);
+		//spin_lock(dentry->d_lock);
 		len = strlen(dentry->d_name.name);
 		start -= len;
 		if(start<=buf)			/*TODO: perform better proper error handling */
@@ -402,13 +402,15 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 		}
 		memcpy(start,dentry->d_name.name,len);
 		*--start='/';
-		spin_unlock(dentry->d_lock);
+		//spin_unlock(dentry->d_lock);
 		//printk(KERN_INFO "%s\n", dentry->d_name.name);
 		dentry = dentry->d_parent;
 		
 	}
 		printk(KERN_INFO "Inode for file %s\n", start);
 	}
+		group=find_group_num(current->comm, start);
+		printk(KERN_INFO "Returned group number..%d",group);
 	}
 		
 	/*
