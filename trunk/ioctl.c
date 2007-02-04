@@ -60,7 +60,7 @@ void add_acc_pat(char appl_name[255],int pat_no,int group_no)
 	//NOT FOUND ROUTINE  ... this case should not occur if we do proper validation at config file parsing time 
 }
 /* add_comp_to_acc_pat() addes a compenent to the pattern ... pattern is specified by appl_name,pat_no */
-void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp comp)
+void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp comp, struct super_block *sb)
 {
 	struct atfs_appl *appl_temp;
 	struct atfs_acc_pat *appl_pat_temp;
@@ -83,6 +83,12 @@ void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp
 				if(appl_pat_temp->pat_no==pat_no)
 				{
 					list_add_tail(&comp_temp->acc_pat_comp_list,&(appl_pat_temp->comp1.acc_pat_comp_list));
+					if(!appl_pat_temp->alloc_group_num)
+					{
+					/* check for existence of file get the group number if the file exists store group number in group_alloc_num else store 0*/
+					appl_pat_temp->alloc_group_num=find_group(comp_temp->path,sb);
+					printk(KERN_INFO "Found group number %d for %s\n", appl_pat_temp->alloc_group_num,comp_temp->path);
+					}					
 					printk(KERN_ALERT "ADDED %s to %s pat no %d\n",comp.path,appl_name,pat_no);
 					return ;
 				}
@@ -91,6 +97,61 @@ void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp
 	}
 	//NOT FOUND ROUTINE
 }
+
+int find_group(char *path, struct super_block *sb)
+{
+	struct dentry *dentry, *parent;
+	char *path_comp;
+	struct inode *inode;
+	struct buffer_head *bh;
+	struct ext3_dir_entry_2 *de;
+	int i;
+	
+	dentry = (struct dentry *) vmalloc(sizeof(struct dentry));
+	parent=sb->s_root;
+	inode = sb->s_root->d_inode;
+	printk(KERN_INFO "%s\n", path);
+	
+	
+	
+	while(*path!='\0')
+	{
+		while(*path=='/') 
+		{
+			printk(KERN_ALERT "-%c-%c- ",*path,*(path+1));
+			path++;
+		}
+		if(*path=='\0') break;
+		printk(KERN_INFO "--%c--", *path);
+		i=0;
+		while(*path!='/'&&*path!='\0')
+		path_comp[i++]=*path++;
+		path_comp[i]='\0';
+		printk(KERN_ALERT "Searching for %s in %s\n", path_comp, parent->d_name.name);
+		dentry = d_alloc_name(parent, path_comp);
+		bh = ext3_find_entry(dentry,&de);
+		if (bh) 
+		{
+			unsigned long ino = le32_to_cpu(de->inode);
+			brelse (bh);
+			inode = iget(sb, ino);
+			printk(KERN_ALERT "Inode number- %d\n", inode->i_ino);
+			if (!inode)
+				return ERR_PTR(-EACCES);
+			atomic_inc(&inode->i_count);
+			d_instantiate(dentry, inode);
+			parent = dentry;			
+		}
+		else
+		{
+			printk(KERN_ALERT "Entry not found\n");
+			return 2;				//return some default
+		}
+	}
+	if(inode)
+		return EXT3_I(inode)->i_block_group;
+}
+
 /*displays all the access patterns specific to an application i.e appl_name ....   this is just a test and debug function and of no other use */
 void display_appl_pats(char appl_name[255])
 {
@@ -426,7 +487,7 @@ flags_err:
 								temp4.type = temp3->type;
 								strcpy(temp4.path,temp3->path);
 								temp4.estd_size = temp3->estd_size;
-								add_comp_to_acc_pat(temp1->appl_name,i,temp4);
+								add_comp_to_acc_pat(temp1->appl_name,i,temp4,inode->i_sb);
 								if(temp3->next == NULL)
 									break;
 								copy_from_user(temp3,temp3->next,sizeof(struct atfs_u_acc_pat_comp));
