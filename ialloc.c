@@ -351,6 +351,8 @@ fallback:
 
 	return -1;
 }
+/* check for the patterns alloc_group_num..if it's zero find group with */
+
 
 static int find_group_other(struct super_block *sb, struct inode *parent, struct nameidata *nd)
 {
@@ -415,13 +417,14 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 		
 	/*
 	 * Try to place the inode in its parent directory
-	 */
+	 
 	group = parent_group;
+	
 	desc = ext3_get_group_desc (sb, group, &bh);
 	if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
 			le16_to_cpu(desc->bg_free_blocks_count))
 		return group;
-
+	*/
 	/*
 	 * We're going to place this inode in a different blockgroup from its
 	 * parent.  We want to cause files in a common directory to all land in
