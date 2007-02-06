@@ -36,7 +36,6 @@
 #include <linux/writeback.h>
 #include <linux/mpage.h>
 #include <linux/uio.h>
-#include <linux/ext3_fs.h>
 #include "xattr.h"
 #include "acl.h"
 
@@ -414,9 +413,8 @@ static unsigned long ext3_find_near(struct inode *inode, Indirect *ind)
 	__le32 *start = ind->bh ? (__le32*) ind->bh->b_data : ei->i_data;
 	__le32 *p;
 	unsigned long bg_start;
-	unsigned long colour,add_offset = 0;
-	struct dentry *de;
-	int estd_size;
+	unsigned long colour;
+
 	/* Try to find previous block */
 	for (p = ind->p - 1; p >= start; p--) {
 		if (*p)
@@ -431,18 +429,11 @@ static unsigned long ext3_find_near(struct inode *inode, Indirect *ind)
 	 * It is going to be referred to from the inode itself? OK, just put it
 	 * into the same cylinder group then.
 	 */
-	de = d_find_alias(inode);
-	estd_size = find_file_estd_size(current->comm,de->d_name.name);
-	if(estd_size == 2)
-	{
-		add_offset = 	(EXT3_BLOCKS_PER_GROUP(inode->i_sb) * 20 )/100;
-	}		
-	printk(KERN_ALERT "GOT BLOCK REQUEST FOR %s\n",de->d_name.name);
 	bg_start = (ei->i_block_group * EXT3_BLOCKS_PER_GROUP(inode->i_sb)) +
 		le32_to_cpu(EXT3_SB(inode->i_sb)->s_es->s_first_data_block);
 	colour = (current->pid % 16) *
 			(EXT3_BLOCKS_PER_GROUP(inode->i_sb) / 16);
-	return bg_start + colour + add_offset;
+	return bg_start + colour;
 }
 
 /**

@@ -138,7 +138,7 @@ int find_group(char *path, struct super_block *sb)
 			printk(KERN_ALERT "Inode number- %d\n", inode->i_ino);
 			if (!inode)
 				return ERR_PTR(-EACCES);
-			//atomic_inc(&inode->i_count);
+			atomic_inc(&inode->i_count);
 			d_instantiate(dentry, inode);
 			parent = dentry;			
 		}
@@ -207,35 +207,6 @@ int find_group_num(char appl_name[255],char *path)
 	}
 		return NOTFOUND;   
 }
-int find_file_estd_size(char appl_name[255],char *path)
-{
-	struct atfs_appl *appl_temp;
-	struct atfs_acc_pat *appl_pat_temp;
-	struct atfs_acc_pat_comp *comp_temp;
-	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
-	int i=0;
-	printk(KERN_ALERT "Finding %s %s\n",appl_name,path);
-	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
-	{
-		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
-		if(!strcmp(appl_temp->appl_name,appl_name))
-		{
-			list_for_each(appl_pat_pos,&(appl_temp->acc_pat1.acc_pat_list))
-			{
-				appl_pat_temp = list_entry(appl_pat_pos,struct atfs_acc_pat,acc_pat_list);
-				
-				list_for_each(comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
-				{
-					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
-					if(!strcmp(comp_temp->path,path))
-						return comp_temp->estd_size; 
-				} 
-			}
-		}
-	}
-		return NOTFOUND;   
-}
-
 struct ext3_our_struct info_array[255];
 __u8 info_array_count;
 
