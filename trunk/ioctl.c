@@ -105,7 +105,7 @@ int find_group(char *path, struct super_block *sb)
 	struct inode *inode;
 	struct buffer_head *bh;
 	struct ext3_dir_entry_2 *de;
-	int i;
+	int i,bg;
 	
 	dentry = (struct dentry *) vmalloc(sizeof(struct dentry));
 	parent=sb->s_root;
@@ -145,11 +145,16 @@ int find_group(char *path, struct super_block *sb)
 		else
 		{
 			printk(KERN_ALERT "Entry not found\n");
+			
 			return 2;				//return some default
 		}
 	}
 	if(inode)
-		return EXT3_I(inode)->i_block_group;
+	{
+		bg = EXT3_I(inode)->i_block_group;
+		iput(inode);
+		return bg;
+	}
 }
 
 /*displays all the access patterns specific to an application i.e appl_name ....   this is just a test and debug function and of no other use */
@@ -186,7 +191,7 @@ int find_group_num(char appl_name[255],char *path)
 	struct atfs_acc_pat_comp *comp_temp;
 	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
 	int i=0;
-	printk(KERN_ALERT "Finding %s %s\n",appl_name,path);
+	printk(KERN_ALERT "find_group_num():Finding %s %s\n",appl_name,path);
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
 	{
 		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
@@ -201,6 +206,37 @@ int find_group_num(char appl_name[255],char *path)
 					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
 					if(!strcmp(comp_temp->path,path))
 						return appl_pat_temp->alloc_group_num; 
+				} 
+			}
+		}
+	}
+		return NOTFOUND;   
+}
+int find_file_estd_size(char appl_name[255],char *path)
+{
+	struct atfs_appl *appl_temp;
+	struct atfs_acc_pat *appl_pat_temp;
+	struct atfs_acc_pat_comp *comp_temp;
+	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
+	int i=0;
+	printk(KERN_ALERT "file_file_estd_size(): Finding %s %s\n",appl_name,path);
+	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
+	{
+		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
+		if(!strcmp(appl_temp->appl_name,appl_name))
+		{
+			list_for_each(appl_pat_pos,&(appl_temp->acc_pat1.acc_pat_list))
+			{
+				appl_pat_temp = list_entry(appl_pat_pos,struct atfs_acc_pat,acc_pat_list);
+				
+				list_for_each(comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
+				{
+					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
+					if(!strcmp(comp_temp->path,path))
+					{
+						printk(KERN_ALERT "FOUND THE FILE\n");
+						return comp_temp->estd_size; 
+					}
 				} 
 			}
 		}
@@ -464,8 +500,6 @@ flags_err:
 		return 0;
 	case EXT3_IOC_ADDTREE:
 		init_ll();   // Creating a completly new linked list each time ioctl call is made
-		temp = (struct atfs_u_appl *)arg;
-		printk(KERN_INFO "\ndb_dev: from user app %x\n temp1 = %x\n",temp,temp1);
 		copy_status = copy_from_user(temp1,temp,sizeof(struct atfs_u_appl));
 		if(copy_status==0)
 		{	
@@ -499,7 +533,7 @@ flags_err:
 						copy_from_user(temp2,temp2->next,sizeof(struct atfs_u_acc_pat));
 					}
 				}
-				//display_appl_pats(temp1->appl_name);
+				display_appl_pats(temp1->appl_name);
 				if(temp1->next == NULL)
 					break;
 				copy_from_user (temp1,temp1->next,sizeof(struct atfs_u_appl));
