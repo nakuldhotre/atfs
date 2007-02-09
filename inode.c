@@ -415,17 +415,11 @@ static unsigned long ext3_find_near(struct inode *inode, Indirect *ind)
 	unsigned long bg_start;
 	unsigned long colour;
 	unsigned long offset=0,inode_blocks;
-	struct dentry *de;
-	de = d_find_alias(inode);
 	inode_blocks = EXT3_INODES_PER_GROUP(inode->i_sb)/(EXT3_BLOCK_SIZE(inode->i_sb)/EXT3_INODE_SIZE(inode->i_sb));
-	if(de!=NULL)
-	{
-		printk(KERN_ALERT "GOT BLOCK REQUEST FOR %s\n type = %d",de->d_name.name,find_file_estd_size(current->comm,de->d_name.name));
-
-		if(find_file_estd_size(current->comm,de->d_name.name)==2)
+	//printk(KERN_ALERT "GOT BLOCK REQUEST FOR %s\n type = %d",de->d_name.name,find_file_estd_size(current->comm,find_path(inode,inode->i_sb)));
+	if(find_file_estd_size(current->comm,find_path(inode,inode->i_sb))==2)
 			offset = (EXT3_BLOCKS_PER_GROUP(inode->i_sb)-inode_blocks)>>2;
-	}
-	dput(de);
+
 	/* Try to find previous block */
 	for (p = ind->p - 1; p >= start; p--) {
 		if (*p)
