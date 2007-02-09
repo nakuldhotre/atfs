@@ -352,6 +352,59 @@ fallback:
 	return -1;
 }
 /* check for the patterns alloc_group_num..if it's zero find group with */
+char * find_path(struct inode *inode, struct super_block *sb)
+{
+	char *start,*buf;
+	int len;
+	struct dentry *dentry,*dentrycopy;
+	
+	
+	buf = (char *)vmalloc(256);
+	strcpy(buf,"/file10");
+	return buf;
+	dentry = d_find_alias(inode);
+	dentrycopy=dentry;
+	start = buf;
+	if(dentry)
+	{
+		start += PATH_MAX;
+		*--start='\0';
+		len = strlen(dentry->d_name.name);
+		if(len>=PATH_MAX)			/* TODO: perform better proper error handling */
+			printk(KERN_INFO "Path too long\n");
+		else
+		{	
+		//printk(KERN_INFO "Name %s\n", nd->last.name);
+		//buf = d_path(nd->dentry,nd->mnt,buf,PATH_MAX);
+		//if(buf)
+			start -= len;
+			memcpy(start,dentry->d_name.name,len);
+			*--start='/';
+			dentry = dentry->d_parent;
+			while(1)
+			{
+				if(dentry == sb->s_root ||!dentry)
+					break;
+				//spin_lock(dentry->d_lock);
+				len = strlen(dentry->d_name.name);
+				start -= len;
+				if(start<=buf)			/*TODO: perform better proper error handling */
+				{
+					printk(KERN_INFO "Path too long\n");
+					break;
+				}
+				memcpy(start,dentry->d_name.name,len);
+				*--start='/';
+				//spin_unlock(dentry->d_lock);
+				//printk(KERN_INFO "%s\n", dentry->d_name.name);
+				dentry = dentry->d_parent;
+			}
+		}
+		dput(dentrycopy);
+		return start;
+	}
+	return NULL;
+}
 
 
 static int find_group_other(struct super_block *sb, struct inode *parent, struct nameidata *nd)
@@ -364,9 +417,6 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 	char *buf,*start;
 	struct dentry *dentry;
 	int len;
-	
-	
-	
 	if(nd)
 	{
 	buf = (char *)vmalloc(PATH_MAX);
@@ -413,18 +463,25 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 	}
 		group=find_group_num(current->comm, start);
 		printk(KERN_INFO "Returned group number..%d",group);
+		if(group>=0)
+		{
+		desc = ext3_get_group_desc (sb, group, &bh);
+		if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
+				le16_to_cpu(desc->bg_free_blocks_count))
+			return group;
+		}
 	}
 		
 	/*
 	 * Try to place the inode in its parent directory
-	 
+	*/ 
 	group = parent_group;
 	
 	desc = ext3_get_group_desc (sb, group, &bh);
 	if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
 			le16_to_cpu(desc->bg_free_blocks_count))
 		return group;
-	*/
+	
 	/*
 	 * We're going to place this inode in a different blockgroup from its
 	 * parent.  We want to cause files in a common directory to all land in
@@ -439,7 +496,7 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 	/*
 	 * Use a quadratic hash to find a group with a free inode and some free
 	 * blocks.
-	 */
+	*/ 
 	for (i = 1; i < ngroups; i <<= 1) {
 		group += i;
 		if (group >= ngroups)
@@ -449,12 +506,12 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 				le16_to_cpu(desc->bg_free_blocks_count))
 			return group;
 	}
-
 	/*
 	 * That failed: try linear search for a free inode, even if that group
 	 * has no free blocks.
-	 */
+	 
 	group = parent_group;
+	*/
 	for (i = 0; i < ngroups; i++) {
 		if (++group >= ngroups)
 			group = 0;
@@ -493,10 +550,11 @@ struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode, str
 	int i;
 	
 
-	printk(KERN_INFO "Ext3_new_inode called\n");
+	//printk(KERN_INFO "Ext3_new_inode called\n");
+	//display_all_apps();
 	//printk(KERN_INFO "Size = %d\n", sizeof(current));
-	printk(KERN_INFO "called by %s\n", current->proc_dentry->d_name.name);
-	printk(KERN_INFO "name %s\n", current->comm);
+	//printk(KERN_INFO "called by %s\n", current->proc_dentry->d_name.name);
+	//printk(KERN_INFO "name %s\n", current->comm);
 	if (!dir || !dir->i_nlink)
 		return ERR_PTR(-EPERM);
 
@@ -520,7 +578,7 @@ struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode, str
 		}
 	} else 
 		group = find_group_other(sb, dir, nd);
-
+	printk(KERN_ALERT  "Alloc_group = %d\n", group);
 	err = -ENOSPC;
 	if (group == -1)
 		goto out;
