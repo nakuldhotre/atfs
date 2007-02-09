@@ -359,9 +359,9 @@ char * find_path(struct inode *inode, struct super_block *sb)
 	struct dentry *dentry,*dentrycopy;
 	
 	
-	buf = (char *)vmalloc(256);
-	strcpy(buf,"/file10");
-	return buf;
+	buf = (char *)vmalloc(PATH_MAX);
+	//strcpy(buf,"/file10");
+	//return buf;
 	dentry = d_find_alias(inode);
 	dentrycopy=dentry;
 	start = buf;

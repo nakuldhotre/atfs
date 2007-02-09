@@ -133,6 +133,7 @@ int find_group(char *path, struct super_block *sb)
 	show_orphan_list(sb);
 	dentry = (struct dentry *) vmalloc(sizeof(struct dentry));
 	parent=sb->s_root;
+	path_comp=(char *)vmalloc(EXT3_NAME_LEN);
 	//inode = sb->s_root->d_inode;
 	printk(KERN_INFO "%s\n", path);
 /*	//NAKUL
