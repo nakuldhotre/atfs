@@ -87,10 +87,10 @@ void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp
 					{
 					/* check for existence of file get the group number if the file exists store group number in group_alloc_num else store 0*/
 					appl_pat_temp->alloc_group_num=find_group(comp_temp->path,sb);
-					printk(KERN_INFO "Found group number %d for %s\n", appl_pat_temp->alloc_group_num,comp_temp->path);
+					//printk(KERN_INFO "Found group number %d for %s\n", appl_pat_temp->alloc_group_num,comp_temp->path);
 					//shrink_dcache_sb(sb);
 					}					
-					printk(KERN_ALERT "ADDED %s to %s pat no %d\n",comp.path,appl_name,pat_no);
+					//printk(KERN_ALERT "ADDED %s to %s pat no %d\n",comp.path,appl_name,pat_no);
 					return ;
 				}
 			}
@@ -135,7 +135,7 @@ int find_group(char *path, struct super_block *sb)
 	parent=sb->s_root;
 	path_comp=(char *)vmalloc(EXT3_NAME_LEN);
 	//inode = sb->s_root->d_inode;
-	printk(KERN_INFO "%s\n", path);
+//	printk(KERN_INFO "%s\n", path);
 /*	//NAKUL
 	dentry = d_alloc_name(parent, path);
 	bh = ext3_find_entry(dentry,&de);
@@ -162,17 +162,17 @@ int find_group(char *path, struct super_block *sb)
 	{
 		while(*path=='/') 
 		{
-			printk(KERN_ALERT "-%c-%c- ",*path,*(path+1));
+		//	printk(KERN_ALERT "-%c-%c- ",*path,*(path+1));
 			path++;
 		}
 		if(*path=='\0') 
 			break;
-		printk(KERN_INFO "--%c--", *path);
+	//	printk(KERN_INFO "--%c--", *path);
 		i=0;
 		while(*path!='/'&&*path!='\0')
 			path_comp[i++]=*path++;
 		path_comp[i]='\0';
-		printk(KERN_ALERT "Searching for %s in %s\n", path_comp, parent->d_name.name);
+	//	printk(KERN_ALERT "Searching for %s in %s\n", path_comp, parent->d_name.name);
 		dentry = d_alloc_name(parent, path_comp);
 		bh = ext3_find_entry(dentry,&de);
 		if (bh) 
@@ -180,7 +180,7 @@ int find_group(char *path, struct super_block *sb)
 			unsigned long ino = le32_to_cpu(de->inode);
 			brelse (bh);
 			inode = iget(sb, ino);
-			printk(KERN_ALERT "Inode number- %d\n", inode->i_ino);
+		//	printk(KERN_ALERT "Inode number- %d\n", inode->i_ino);
 			if (!inode)
 				return ERR_PTR(-EACCES);
 			//atomic_inc(&inode->i_count);
@@ -190,14 +190,14 @@ int find_group(char *path, struct super_block *sb)
 		}
 		else
 		{
-			printk(KERN_ALERT "Entry not found\n");
+		//	printk(KERN_ALERT "Entry not found\n");
 			parent=dentry->d_parent;
 			dput(dentry);
 			dentry=parent;
 			while(dentry!=sb->s_root)
 			{
 				parent = dentry->d_parent;
-				printk("Putting inode for %s no %ld\n", dentry->d_name.name,dentry->d_inode->i_ino);
+			//	printk("Putting inode for %s no %ld\n", dentry->d_name.name,dentry->d_inode->i_ino);
 			//	iput(dentry->d_inode);
 				dput(dentry);
 				dentry = parent;
@@ -213,7 +213,7 @@ int find_group(char *path, struct super_block *sb)
 		while(dentry!=sb->s_root)
 		{
 			parent = dentry->d_parent;
-			printk("Putting inode for %s no %ld\n", dentry->d_name.name,dentry->d_inode->i_ino);
+		//	printk("Putting inode for %s no %ld\n", dentry->d_name.name,dentry->d_inode->i_ino);
 		//	iput(dentry->d_inode);
 			dput(dentry);
 			dentry = parent;
@@ -304,10 +304,10 @@ int find_group_num(char appl_name[255],char *path)
 	int i=0;
 	if(list_empty(&atfs_appl_ll.appl_list))
 	{
-		printk(KERN_ALERT "No application info present\n");
+	//	printk(KERN_ALERT "No application info present\n");
 		return -1;
 	}
-	printk(KERN_ALERT "find_group_num():Finding %s %s\n",appl_name,path);
+	//printk(KERN_ALERT "find_group_num():Finding %s %s\n",appl_name,path);
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
 	{
 		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
@@ -340,7 +340,7 @@ int find_file_estd_size(char appl_name[255],char *path)
 		printk(KERN_ALERT "No application info present\n");
 		return -1;
 	}
-	printk(KERN_ALERT "file_file_estd_size(): Finding %s %s\n",appl_name,path);
+	//printk(KERN_ALERT "file_file_estd_size(): Finding %s %s\n",appl_name,path);
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
 	{
 		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
@@ -356,7 +356,7 @@ int find_file_estd_size(char appl_name[255],char *path)
 					//printk(KERN_ALERT "comparing with %s\n",comp_temp->path);
 					if(!strcmp(comp_temp->path,path))
 					{
-						printk(KERN_ALERT "FOUND THE FILE\n");
+					//	printk(KERN_ALERT "FOUND THE FILE\n");
 						return comp_temp->estd_size; 
 					}
 				} 

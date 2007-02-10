@@ -112,7 +112,7 @@ error_out:
  * we could easily switch to that without changing too much
  * code.
  */
-#if 0
+#if 1
 static void __rsv_window_dump(struct rb_root *root, int verbose,
 			      const char *fn)
 {
@@ -933,11 +933,22 @@ static int alloc_new_reservation(struct ext3_reserve_window_node *my_rsv,
 			 * if we previously allocation hit ration is greater than half
 			 * we double the size of reservation window next time
 			 * otherwise keep the same
-			 */
+			 */ 
+		 	/*
+		 	 * We are resetting the reservation window once the desired hit ratio
+		 	 * is achieved. Thus the reservation is done in incremental chunks rather than
+		 	 * reserving a complete larger block */
+			 {
 			size = size * 2;
+			//	printk(KERN_INFO "Soft reseting reservation window\n");
+			//	my_rsv->rsv_start = EXT3_RESERVE_WINDOW_NOT_ALLOCATED;
+			//	my_rsv->rsv_end = EXT3_RESERVE_WINDOW_NOT_ALLOCATED;
+			//	my_rsv->rsv_alloc_hit = 0;
+				//find_next_reservable_window(search_head,my_rsv,sb, start_block,	group_end_block);  //this is our line not present in original code
 			if (size > EXT3_MAX_RESERVE_BLOCKS)
 				size = EXT3_MAX_RESERVE_BLOCKS;
 			my_rsv->rsv_goal_size= size;
+			}
 		}
 	}
 
@@ -1225,9 +1236,11 @@ int ext3_new_blocks(handle_t *handle, struct inode *inode,
 #endif
 	unsigned long ngroups;
 	unsigned long num = *count;
-
-	*errp = -ENOSPC;
+	struct rb_root *root;
 	sb = inode->i_sb;
+	root	= &EXT3_SB(sb)->s_rsv_window_root;  //PRINTING RESERVATION WINDOW
+//	rsv_window_dump(root, 1);
+	*errp = -ENOSPC;
 	if (!sb) {
 		printk("ext3_new_block: nonexistent device");
 		return 0;

@@ -418,7 +418,7 @@ static unsigned long ext3_find_near(struct inode *inode, Indirect *ind)
 	int estd_size;
 	inode_blocks = EXT3_INODES_PER_GROUP(inode->i_sb)/(EXT3_BLOCK_SIZE(inode->i_sb)/EXT3_INODE_SIZE(inode->i_sb));
 	estd_size = find_file_estd_size(current->comm,find_path(inode,inode->i_sb));
-	printk(KERN_ALERT "GOT BLOCK REQUEST FOR %ld type = %d\n",inode->i_ino,estd_size);
+	//printk(KERN_ALERT "GOT BLOCK REQUEST FOR %ld type = %d\n",inode->i_ino,estd_size);
 	if(estd_size==2)
 			offset = (EXT3_BLOCKS_PER_GROUP(inode->i_sb)-inode_blocks)>>2;
 
@@ -441,7 +441,7 @@ static unsigned long ext3_find_near(struct inode *inode, Indirect *ind)
 	//colour = (current->pid % 16) * (EXT3_BLOCKS_PER_GROUP(inode->i_sb) / 16);
 	colour = 0;
 	
-	printk(KERN_ALERT "Suggested block near %ld \n",bg_start+colour+inode_blocks+offset);
+//	printk(KERN_ALERT "Suggested block near %ld \n",bg_start+colour+inode_blocks+offset);
 	return bg_start + colour + inode_blocks+offset;
 }
 
@@ -533,7 +533,6 @@ static int ext3_alloc_blocks(handle_t *handle, struct inode *inode,
 	int index = 0;
 	unsigned long current_block = 0;
 	int ret = 0;
-
 	/*
 	 * Here we try to allocate the requested multiple blocks at once,
 	 * on a best-effort basis.
@@ -543,7 +542,6 @@ static int ext3_alloc_blocks(handle_t *handle, struct inode *inode,
 	 * minimum number of blocks need to allocate(required)
 	 */
 	target = blks + indirect_blks;
-
 	while (1) {
 		count = target;
 		/* allocating blocks for indirect blocks and direct blocks */
@@ -893,7 +891,21 @@ int ext3_get_blocks_handle(handle_t *handle, struct inode *inode,
 	*/
 	if (S_ISREG(inode->i_mode) && (!ei->i_block_alloc_info))
 		ext3_init_block_alloc_info(inode);
-
+	if(inode->i_size==0) //just created and hence we must try to set the window size
+	{
+		if(find_file_estd_size(current->comm,find_path(inode,inode->i_sb))==3 ) // if file type is huge set reservation window size to max
+		{
+			struct ext3_reserve_window_node *rsv = &ei->i_block_alloc_info->rsv_window_node;
+			rsv->rsv_goal_size = EXT3_MAX_RESERVE_BLOCKS;
+			printk(KERN_ALERT "Setting max reservation window size\n");
+		}
+		if(find_file_estd_size(current->comm,find_path(inode,inode->i_sb))==2) // large
+		{
+			struct ext3_reserve_window_node *rsv = &ei->i_block_alloc_info->rsv_window_node;
+			rsv->rsv_goal_size = 512;
+			printk(KERN_ALERT "Setting reservation window size 512 blocks\n");
+		}
+	}
 	goal = ext3_find_goal(inode, iblock, chain, partial);
 
 	/* the number of blocks need to allocate for [d,t]indirect blocks */
