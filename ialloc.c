@@ -401,6 +401,7 @@ char * find_path(struct inode *inode, struct super_block *sb)
 			}
 		}
 		dput(dentrycopy);
+		//printk(KERN_ALERT "successfully returning from path_find\n");
 		return start;
 	}
 	return NULL;
@@ -459,10 +460,10 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 		dentry = dentry->d_parent;
 		
 	}
-		printk(KERN_INFO "Inode for file %s\n", start);
+	//	printk(KERN_INFO "Inode for file %s\n", start);
 	}
 		group=find_group_num(current->comm, start);
-		printk(KERN_INFO "Returned group number..%d",group);
+	//	printk(KERN_INFO "Returned group number..%d",group);
 		if(group>=0)
 		{
 		desc = ext3_get_group_desc (sb, group, &bh);
@@ -578,7 +579,7 @@ struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode, str
 		}
 	} else 
 		group = find_group_other(sb, dir, nd);
-	printk(KERN_ALERT  "Alloc_group = %d\n", group);
+	//printk(KERN_ALERT  "Alloc_group = %d\n", group);
 	err = -ENOSPC;
 	if (group == -1)
 		goto out;
