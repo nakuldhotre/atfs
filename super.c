@@ -2672,6 +2672,7 @@ static int __init init_ext3_fs(void)
 	if (err)
 		goto out;
 	return 0;
+	init_appl_ll();
 out:
 	destroy_inodecache();
 out1:
