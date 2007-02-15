@@ -21,7 +21,7 @@
 #define NOTFOUND -2
 static int Device_Open = 0;
 struct atfs_appl atfs_appl_ll;
-void init_ll()
+void init_appl_ll()
 {
 	INIT_LIST_HEAD(&atfs_appl_ll.appl_list);
 }
@@ -130,7 +130,7 @@ int find_group(char *path, struct super_block *sb)
 	struct ext3_dir_entry_2 *de;
 	int i,bg;
 	
-	show_orphan_list(sb);
+	//show_orphan_list(sb);
 	dentry = (struct dentry *) vmalloc(sizeof(struct dentry));
 	parent=sb->s_root;
 	path_comp=(char *)vmalloc(EXT3_NAME_LEN);
@@ -202,8 +202,8 @@ int find_group(char *path, struct super_block *sb)
 				dput(dentry);
 				dentry = parent;
 			}			
-			dump_orphan_list(sb,EXT3_SB(sb));
-			show_orphan_list(sb);	
+			//dump_orphan_list(sb,EXT3_SB(sb));
+			//show_orphan_list(sb);	
 			return 2;				//return some default
 		}
 	}
@@ -218,9 +218,9 @@ int find_group(char *path, struct super_block *sb)
 			dput(dentry);
 			dentry = parent;
 		}	
-		dump_orphan_list(sb,EXT3_SB(sb));
+		//dump_orphan_list(sb,EXT3_SB(sb));
 		//iput(inode);
-		show_orphan_list(sb);
+		//show_orphan_list(sb);
 		return bg;
 	}
 }
@@ -302,10 +302,68 @@ int find_group_num(char appl_name[255],char *path)
 	struct atfs_acc_pat_comp *comp_temp;
 	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
 	int i=0;
+	char *dir;
 	if(list_empty(&atfs_appl_ll.appl_list))
 	{
 	//	printk(KERN_ALERT "No application info present\n");
 		return -1;
+	}
+	i=strlen(path)-1;
+	dir=(char *)vmalloc(PATH_MAX);
+	while(path[i]!='/'&&i>0) i--;
+	memcpy(dir,path,i+1);
+	dir[i+1]=0;
+	printk("parent path - %s\n",	dir);
+	
+	//printk(KERN_ALERT "find_group_num():Finding %s %s\n",appl_name,path);
+	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
+	{
+		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
+		if(!strcmp(appl_temp->appl_name,appl_name))
+		{
+			list_for_each(appl_pat_pos,&(appl_temp->acc_pat1.acc_pat_list))
+			{
+				appl_pat_temp = list_entry(appl_pat_pos,struct atfs_acc_pat,acc_pat_list);
+				
+				list_for_each(comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
+				{
+					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
+					if(comp_temp->type==ATFS_COMP_DIR)
+					{
+						if(!strcmp(comp_temp->path,dir))
+							return appl_pat_temp->alloc_group_num;
+					}
+					else
+					{
+						if(!strcmp(comp_temp->path,path))
+							return appl_pat_temp->alloc_group_num; 
+					}
+				} 
+			}
+		}
+	}
+		return NOTFOUND;   
+}
+void set_group_num(char appl_name[255],char *path,int group)
+{
+	struct atfs_appl *appl_temp;
+	struct atfs_acc_pat *appl_pat_temp;
+	struct atfs_acc_pat_comp *comp_temp;
+	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
+	char *dir;
+	int dirlen;
+	
+	dirlen=strlen(path)-1;
+	dir=(char *)vmalloc(PATH_MAX);
+	while(path[dirlen]!='/'&&dirlen>0) dirlen--;
+	memcpy(dir,path,dirlen+1);
+	dir[dirlen+1] = 0;
+	//printk("dir = %s\n", dir);
+	
+	if(list_empty(&atfs_appl_ll.appl_list))
+	{
+		printk(KERN_ALERT "No application info present\n");
+		return;
 	}
 	//printk(KERN_ALERT "find_group_num():Finding %s %s\n",appl_name,path);
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
@@ -320,14 +378,24 @@ int find_group_num(char appl_name[255],char *path)
 				list_for_each(comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
 				{
 					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
-					if(!strcmp(comp_temp->path,path))
-						return appl_pat_temp->alloc_group_num; 
+					if(comp_temp->type==ATFS_COMP_DIR)
+					{
+						if(!strcmp(comp_temp->path,dir))
+						{
+							appl_pat_temp->alloc_group_num = group;
+							return;
+						}							
+					}
+					else
+						if(!strcmp(comp_temp->path,path))
+							appl_pat_temp->alloc_group_num = group; 
+						return;
+					
 				} 
 			}
 		}
-	}
-		return NOTFOUND;   
-}
+	}}
+
 int find_file_estd_size(char appl_name[255],char *path)
 {
 	struct atfs_appl *appl_temp;
@@ -621,7 +689,7 @@ flags_err:
 		info_array_count++;
 		return 0;
 	case EXT3_IOC_ADDTREE:
-		init_ll();   // Creating a completly new linked list each time ioctl call is made
+		init_appl_ll();   // Creating a completly new linked list each time ioctl call is made
 	     temp = (struct atfs_u_appl *)arg;
 		copy_status = copy_from_user(temp1,temp,sizeof(struct atfs_u_appl));
 		printk("copystatus = %d\n", copy_status);
