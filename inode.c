@@ -891,7 +891,7 @@ int ext3_get_blocks_handle(handle_t *handle, struct inode *inode,
 	*/
 	if (S_ISREG(inode->i_mode) && (!ei->i_block_alloc_info))
 		ext3_init_block_alloc_info(inode);
-	if(inode->i_size==0) //just created and hence we must try to set the window size
+	if(inode->i_size==0 && test_opt(inode->i_sb, RESERVATION)) //just created and hence we must try to set the window size
 	{
 		if(find_file_estd_size(current->comm,find_path(inode,inode->i_sb))==3 ) // if file type is huge set reservation window size to max
 		{

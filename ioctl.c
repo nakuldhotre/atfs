@@ -19,8 +19,8 @@
 #define SUCCESS 0
 #define UNALLOC -1
 #define NOTFOUND -2
-static int Device_Open = 0;
 struct atfs_appl atfs_appl_ll;
+int find_group(char *,struct super_block *);
 void init_appl_ll()
 {
 	INIT_LIST_HEAD(&atfs_appl_ll.appl_list);
@@ -52,6 +52,7 @@ void add_acc_pat(char appl_name[255],int pat_no,int group_no)
 			temp->pat_no = pat_no;
 			temp->alloc_group_num = group_no;
 			INIT_LIST_HEAD(&temp->comp1.acc_pat_comp_list);
+			INIT_LIST_HEAD(&temp->alloc_group_list);
 			list_add_tail(&(temp->acc_pat_list),&(appl_temp->acc_pat1.acc_pat_list));
 			printk(KERN_ALERT "Adding Access pattern no %d for appl %s and grp no %d\n",pat_no,appl_name,group_no);
 			return ;
@@ -65,11 +66,13 @@ void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp
 	struct atfs_appl *appl_temp;
 	struct atfs_acc_pat *appl_pat_temp;
 	struct atfs_acc_pat_comp *comp_temp;
-	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
+	struct list_head *appl_pos,*appl_pat_pos;
+	int ret;
 	comp_temp = (struct atfs_acc_pat_comp *)vmalloc(sizeof(struct atfs_acc_pat_comp));
 	strcpy(comp_temp->path,comp.path);
 	comp_temp->estd_size = comp.estd_size;
 	comp_temp->type = comp.type;
+	
 	
 	//printk(KERN_ALERT "%s %d %s\n",appl_name,pat_no,comp.path);
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
@@ -83,13 +86,15 @@ void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp
 				if(appl_pat_temp->pat_no==pat_no)
 				{
 					list_add_tail(&comp_temp->acc_pat_comp_list,&(appl_pat_temp->comp1.acc_pat_comp_list));
-					if(!appl_pat_temp->alloc_group_num)
-					{
+					//if(!appl_pat_temp->alloc_group_num)
+					//{
 					/* check for existence of file get the group number if the file exists store group number in group_alloc_num else store 0*/
-					appl_pat_temp->alloc_group_num=find_group(comp_temp->path,sb);
+					//appl_pat_temp->alloc_group_num=find_group(comp_temp->path,sb);
 					//printk(KERN_INFO "Found group number %d for %s\n", appl_pat_temp->alloc_group_num,comp_temp->path);
 					//shrink_dcache_sb(sb);
-					}					
+					//}
+					if((ret=find_group(comp_temp->path,sb))>=0)
+					add_group_num(appl_pat_temp,ret);
 					//printk(KERN_ALERT "ADDED %s to %s pat no %d\n",comp.path,appl_name,pat_no);
 					return ;
 				}
@@ -99,33 +104,30 @@ void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp
 	//NOT FOUND ROUTINE
 }
 
-static inline struct inode *orphan_list_entry(struct list_head *l)
+void add_group_num (struct atfs_acc_pat * acc_pat, int group_num)
 {
-	return &list_entry(l, struct ext3_inode_info, i_orphan)->vfs_inode;
-}
-
-static void dump_orphan_list(struct super_block *sb, struct ext3_sb_info *sbi)
-{
-	struct list_head *l;
-
-	printk(KERN_ERR "sb orphan head is %d\n", 
-	       le32_to_cpu(sbi->s_es->s_last_orphan));
-
-	printk(KERN_ERR "sb_info orphan list:\n");
-	list_for_each(l, &sbi->s_orphan) {
-		struct inode *inode = orphan_list_entry(l);
-		printk(KERN_ERR "  "
-		       "inode %s:%ld at %p: mode %o, nlink %d, next %d\n",
-		       inode->i_sb->s_id, inode->i_ino, inode,
-		       inode->i_mode, inode->i_nlink, 
-		       NEXT_ORPHAN(inode));
+	struct atfs_alloc_group *temp_alloc_group,*new_alloc_group;
+	struct list_head *pos_alloc_group;
+	
+	if(!list_empty(&acc_pat->alloc_group_list))
+	list_for_each(pos_alloc_group, &acc_pat->alloc_group_list)
+	{
+		temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
+		if(temp_alloc_group->group_no==group_num) return;
 	}
+	printk("Access pattern didnt have this group..adding %d\n",group_num);
+	new_alloc_group = (struct atfs_alloc_group *) vmalloc(sizeof(struct atfs_alloc_group));
+	new_alloc_group->group_no = group_num;	
+	list_add_tail(&(new_alloc_group->alloc_group_list),&(acc_pat->alloc_group_list));
 }
+
+
+
 int find_group(char *path, struct super_block *sb)
 {
 	struct dentry *dentry, *parent;
 	char *path_comp;
-	struct inode *inode;
+	struct inode *inode=NULL;
 	struct buffer_head *bh;
 	struct ext3_dir_entry_2 *de;
 	int i,bg;
@@ -182,7 +184,7 @@ int find_group(char *path, struct super_block *sb)
 			inode = iget(sb, ino);
 		//	printk(KERN_ALERT "Inode number- %d\n", inode->i_ino);
 			if (!inode)
-				return ERR_PTR(-EACCES);
+				return -EACCES;
 			//atomic_inc(&inode->i_count);
 			//d_instantiate(dentry, inode);
 			//parent = dentry;			
@@ -204,7 +206,7 @@ int find_group(char *path, struct super_block *sb)
 			}			
 			//dump_orphan_list(sb,EXT3_SB(sb));
 			//show_orphan_list(sb);	
-			return 2;				//return some default
+			return -2;				//return some default
 		}
 	}
 	if(inode)
@@ -223,6 +225,7 @@ int find_group(char *path, struct super_block *sb)
 		//show_orphan_list(sb);
 		return bg;
 	}
+	return -2;
 }
 
 
@@ -239,7 +242,7 @@ void show_orphan_list(struct super_block *sb)
 		list_for_each(pos_inode,&EXT3_I(inode)->i_orphan)
 		{
 			temp_ie = list_entry(pos_inode,struct ext3_inode_info,i_orphan);
-			printk(KERN_ALERT "Inode number - %d\t", temp_ie->vfs_inode.i_ino);
+			printk(KERN_ALERT "Inode number - %ld\t", temp_ie->vfs_inode.i_ino);
 		}
 	}
 	printk("All inodes\n");
@@ -248,7 +251,7 @@ void show_orphan_list(struct super_block *sb)
 		list_for_each(pos_inode,&sb->s_inodes)
 		{
 			temp_inode = list_entry(pos_inode,struct inode,i_list);
-			printk(KERN_ALERT "Inode number - %d\t", temp_inode->i_ino);
+			printk(KERN_ALERT "Inode number - %ld\t", temp_inode->i_ino);
 		}
 	}
 	printk("Dirty inodes\n");
@@ -257,7 +260,7 @@ void show_orphan_list(struct super_block *sb)
 		list_for_each(pos_inode,&sb->s_inodes)
 		{
 			temp_inode = list_entry(pos_inode,struct inode,i_list);
-			printk(KERN_ALERT "Inode number - %d\t", temp_inode->i_ino);
+			printk(KERN_ALERT "Inode number - %ld\t", temp_inode->i_ino);
 		}
 	}
 	
@@ -274,7 +277,6 @@ void display_appl_pats(char appl_name[255])
 	if(list_empty(&atfs_appl_ll.appl_list))
 	{
 		printk(KERN_ALERT "No application info present\n");
-		return -1;
 	}
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
 	{
@@ -295,7 +297,7 @@ void display_appl_pats(char appl_name[255])
 	}
 }
 /* find_group_num() returns the assigned group number for component based on the access pattern ... */
-int find_group_num(char appl_name[255],char *path)
+struct list_head * find_group_num(char appl_name[255],char *path,int *estd_size)
 {
 	struct atfs_appl *appl_temp;
 	struct atfs_acc_pat *appl_pat_temp;
@@ -306,7 +308,7 @@ int find_group_num(char appl_name[255],char *path)
 	if(list_empty(&atfs_appl_ll.appl_list))
 	{
 	//	printk(KERN_ALERT "No application info present\n");
-		return -1;
+		return NULL;
 	}
 	i=strlen(path)-1;
 	dir=(char *)vmalloc(PATH_MAX);
@@ -331,18 +333,24 @@ int find_group_num(char appl_name[255],char *path)
 					if(comp_temp->type==ATFS_COMP_DIR)
 					{
 						if(!strcmp(comp_temp->path,dir))
-							return appl_pat_temp->alloc_group_num;
+						{
+							*estd_size = comp_temp->estd_size;
+							return &appl_pat_temp->alloc_group_list;
+						}
 					}
 					else
 					{
 						if(!strcmp(comp_temp->path,path))
-							return appl_pat_temp->alloc_group_num; 
+						{
+							*estd_size = comp_temp->estd_size;
+							return &appl_pat_temp->alloc_group_list; 
+						}
 					}
 				} 
 			}
 		}
 	}
-		return NOTFOUND;   
+	return NULL;   
 }
 void set_group_num(char appl_name[255],char *path,int group)
 {
@@ -382,13 +390,13 @@ void set_group_num(char appl_name[255],char *path,int group)
 					{
 						if(!strcmp(comp_temp->path,dir))
 						{
-							appl_pat_temp->alloc_group_num = group;
+							add_group_num(appl_pat_temp,group);
 							return;
 						}							
 					}
 					else
 						if(!strcmp(comp_temp->path,path))
-							appl_pat_temp->alloc_group_num = group; 
+							add_group_num(appl_pat_temp,group); 
 						return;
 					
 				} 
@@ -402,7 +410,7 @@ int find_file_estd_size(char appl_name[255],char *path)
 	struct atfs_acc_pat *appl_pat_temp;
 	struct atfs_acc_pat_comp *comp_temp;
 	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
-	int i=0;
+
 	if(list_empty(&atfs_appl_ll.appl_list))
 	{
 		printk(KERN_ALERT "No application info present\n");
@@ -716,19 +724,19 @@ flags_err:
 								add_comp_to_acc_pat(temp1->appl_name,i,temp4,inode->i_sb);
 								if(temp3->next == NULL)
 									break;
-								copy_from_user(temp3,temp3->next,sizeof(struct atfs_u_acc_pat_comp));
+								copy_status=copy_from_user(temp3,temp3->next,sizeof(struct atfs_u_acc_pat_comp));
 							}
 						}
 						i++;
 						if(temp2->next == NULL)
 							break;
-						copy_from_user(temp2,temp2->next,sizeof(struct atfs_u_acc_pat));
+						copy_status=copy_from_user(temp2,temp2->next,sizeof(struct atfs_u_acc_pat));
 					}
 				}
 				//display_appl_pats(temp1->appl_name);
 				if(temp1->next == NULL)
 					break;
-				copy_from_user (temp1,temp1->next,sizeof(struct atfs_u_appl));
+				copy_status=copy_from_user (temp1,temp1->next,sizeof(struct atfs_u_appl));
 			}
 		}
 		return 0;
@@ -750,7 +758,6 @@ void display_all_apps()
 	if(list_empty(&atfs_appl_ll.appl_list))
 	{
 		printk(KERN_ALERT "No application info present\n");
-		return -1;
 	}
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
 	{

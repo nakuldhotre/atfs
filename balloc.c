@@ -927,19 +927,19 @@ static int alloc_new_reservation(struct ext3_reserve_window_node *my_rsv,
 				(start_block >= my_rsv->rsv_start))
 			return -1;
 
-		if ((my_rsv->rsv_alloc_hit >
+		/*if ((my_rsv->rsv_alloc_hit >
 		     (my_rsv->rsv_end - my_rsv->rsv_start + 1) / 2)) {
 			/*
 			 * if we previously allocation hit ration is greater than half
 			 * we double the size of reservation window next time
 			 * otherwise keep the same
-			 */ 
-		 	/*
+			 
+		 	
 		 	 * We are resetting the reservation window once the desired hit ratio
 		 	 * is achieved. Thus the reservation is done in incremental chunks rather than
-		 	 * reserving a complete larger block */
+		 	 * reserving a complete larger block 
 			 {
-			size = size * 2;
+			//size = size * 2;
 			//	printk(KERN_INFO "Soft reseting reservation window\n");
 			//	my_rsv->rsv_start = EXT3_RESERVE_WINDOW_NOT_ALLOCATED;
 			//	my_rsv->rsv_end = EXT3_RESERVE_WINDOW_NOT_ALLOCATED;
@@ -949,7 +949,7 @@ static int alloc_new_reservation(struct ext3_reserve_window_node *my_rsv,
 				size = EXT3_MAX_RESERVE_BLOCKS;
 			my_rsv->rsv_goal_size= size;
 			}
-		}
+		}*/
 	}
 
 	spin_lock(rsv_lock);
