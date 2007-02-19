@@ -417,110 +417,248 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 	int group, i;
 	char *buf,*start;
 	struct dentry *dentry;
-	int len;
+	int len,estd_size,min_group,has_free_inode,has_max_free_blocks;
+	unsigned long max_free_blocks;
+	struct atfs_alloc_group *temp_alloc_group;
+	struct list_head *alloc_group_list,*pos_alloc_group;
+	
 	if(nd)
 	{
-	buf = (char *)vmalloc(PATH_MAX);
-	start = buf;
-	if(!buf)
-	{
-		printk(KERN_INFO "Error in mem allocation\n");
-		return -ENOMEM;
-	}
-	start += PATH_MAX;
-	*--start='\0';
-	len = strlen(nd->last.name);
-	if(len>=PATH_MAX)			/* TODO: perform better proper error handling */
-		printk(KERN_INFO "Path too long\n");
-	else
-	{	
-	//printk(KERN_INFO "Name %s\n", nd->last.name);
-	//buf = d_path(nd->dentry,nd->mnt,buf,PATH_MAX);
-	//if(buf)
-	start -= len;
-	memcpy(start,nd->last.name,len);
-	*--start='/';
-	dentry = nd->dentry;
-	while(1)
-	{
-		if(dentry == sb->s_root ||!dentry)
-			break;
-		//spin_lock(dentry->d_lock);
-		len = strlen(dentry->d_name.name);
-		start -= len;
-		if(start<=buf)			/*TODO: perform better proper error handling */
+		buf = (char *)vmalloc(PATH_MAX);
+		start = buf;
+		if(!buf)
 		{
+			printk(KERN_INFO "Error in mem allocation\n");
+			return -ENOMEM;
+		}
+		start += PATH_MAX;
+		*--start='\0';
+		len = strlen(nd->last.name);
+		if(len>=PATH_MAX)			/* TODO: perform better proper error handling */
 			printk(KERN_INFO "Path too long\n");
-			break;
+		else
+		{	
+			//printk(KERN_INFO "Name %s\n", nd->last.name);
+			//buf = d_path(nd->dentry,nd->mnt,buf,PATH_MAX);
+			//if(buf)
+			start -= len;
+			memcpy(start,nd->last.name,len);
+			*--start='/';
+			dentry = nd->dentry;
+			while(1)
+			{	
+				if(dentry == sb->s_root ||!dentry)
+					break;
+				//spin_lock(dentry->d_lock);
+				len = strlen(dentry->d_name.name);
+				start -= len;
+				if(start<=buf)			/*TODO: perform better proper error handling */
+				{
+					printk(KERN_INFO "Path too long\n");
+					break;
+				}
+				memcpy(start,dentry->d_name.name,len);
+				*--start='/';
+				//spin_unlock(dentry->d_lock);
+				//printk(KERN_INFO "%s\n", dentry->d_name.name);
+				dentry = dentry->d_parent;	
+			}
+			//	printk(KERN_INFO "Inode for file %s\n", start);
 		}
-		memcpy(start,dentry->d_name.name,len);
-		*--start='/';
-		//spin_unlock(dentry->d_lock);
-		//printk(KERN_INFO "%s\n", dentry->d_name.name);
-		dentry = dentry->d_parent;
-		
-	}
-	//	printk(KERN_INFO "Inode for file %s\n", start);
-	}
-		group=find_group_num(current->comm, start);
-	//	printk(KERN_INFO "Returned group number..%d",group);
-		if(group>=0)
+		alloc_group_list=find_group_num(current->comm, start,&estd_size);
+		group = parent_group;
+		//	printk(KERN_INFO "Returned group number..%d",group);
+		switch(estd_size)
 		{
-		desc = ext3_get_group_desc (sb, group, &bh);
-		if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
-				le16_to_cpu(desc->bg_free_blocks_count))
-			return group;
-		}
+		case ATFS_SMALL_FILE:
+			//search allocated groups for free inode and free block
+			//if no free block in allocated groups
+			//search for free inode only
+			has_free_inode = -1;
+			list_for_each(pos_alloc_group,alloc_group_list)
+			{
+				temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
+				group = temp_alloc_group->group_no;			
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if (desc && le16_to_cpu(desc->bg_free_inodes_count))
+				{
+					has_free_inode = group;
+					if(le16_to_cpu(desc->bg_free_blocks_count))
+					{
+						set_group_num(current->comm, start, group);
+						return group;
+					}
+				}
+			}
+			if(has_free_inode > -1)
+			{	
+				group = has_free_inode;
+				set_group_num(current->comm, start, group);
+				return group;
+			}	
+
+		case ATFS_LARGE_FILE:
+			min_group = ngroups;
+			//search for allocated group with 3/16 free space
+			//3/16 = 3/4 * 1/4 as 3/4 space for large files and 4 large files per group
+			//TODO: MAKE THESE NUMBERS MACROS
+			list_for_each(pos_alloc_group,alloc_group_list)
+			{
+				temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
+				group = temp_alloc_group->group_no;
+				if(group < min_group)
+					min_group = group;			
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
+					(le16_to_cpu(desc->bg_free_blocks_count)>=(3*(EXT3_SB(sb)->s_blocks_per_group/16))))
+				{
+					set_group_num(current->comm, start, group);
+					return group;
+				}
+			}
+			//no allocated group has more than 3/16 free space 
+			//try searching for free group starting from minimum allocated group
+			group = min_group;
+			for (i = 0; i < ngroups; i++) 
+			{
+				if (++group >= ngroups)
+					group = 0;
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if (desc && (le16_to_cpu(desc->bg_free_inodes_count)==EXT3_SB(sb)->s_inodes_per_group))
+				{
+					set_group_num(current->comm, start, group); //this group now allocated to this access pattern
+					return group;
+				}
+			}
+			//no free groups left
+			//search for any group having 3/16 free space
+			group = min_group;
+			for (i = 0; i < ngroups; i++) 
+			{
+				if (++group >= ngroups)
+					group = 0;
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
+					(le16_to_cpu(desc->bg_free_blocks_count)>=(3*(EXT3_SB(sb)->s_blocks_per_group/16))))
+				{
+					set_group_num(current->comm, start, group); //this group now allocated to this access pattern
+					return group;
+				}
+			}
+			break;
+		case ATFS_HUGE_FILE:
+			//search for free group
+			group = parent_group;
+			for (i = 0; i < ngroups; i++) 
+			{
+				if (++group >= ngroups)
+					group = 0;
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if (desc && (le16_to_cpu(desc->bg_free_inodes_count)==EXT3_SB(sb)->s_inodes_per_group))
+				{
+					set_group_num(current->comm, start, group); //this group now allocated to this access pattern
+					return group;
+				}
+			}
+			//no free group
+			//search for allocated group having maximum free space
+			
+			max_free_blocks = 0;
+			min_group = ngroups;
+			list_for_each(pos_alloc_group,alloc_group_list)
+			{
+				temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
+				group = temp_alloc_group->group_no;
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if(group < min_group)
+					min_group = group;
+				if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
+					(le16_to_cpu(desc->bg_free_blocks_count)>=(3*(EXT3_SB(sb)->s_blocks_per_group/16))))
+				{
+					set_group_num(current->comm, start, group);
+					return group;
+				}
+				if(le16_to_cpu(desc->bg_free_blocks_count)>max_free_blocks)
+				{
+					max_free_blocks = le16_to_cpu(desc->bg_free_blocks_count);
+					has_max_free_blocks = group;
+				}
+			}
+			//if this free space is more than half group size return it
+			if((2*max_free_blocks) >= EXT3_SB(sb)->s_blocks_per_group)
+			{
+				set_group_num(current->comm, start, group);
+				return group;
+			}
+			//search for any group having more than half free space
+			group = min_group;
+			for (i = 0; i < ngroups; i++) 
+			{
+				if (++group >= ngroups)
+					group = 0;
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if (desc && (le16_to_cpu(desc->bg_free_inodes_count)==EXT3_SB(sb)->s_inodes_per_group))
+				{
+					set_group_num(current->comm, start, group);
+					return group;
+				}
+			}
+			printk("couldnt find space for a huge file..dont create anymore..\n");
+			break;
+		}		
 	}
-		
+	else
+	{		
 	/*
 	 * Try to place the inode in its parent directory
 	*/ 
-	group = parent_group;
-	
-	desc = ext3_get_group_desc (sb, group, &bh);
-	if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
-			le16_to_cpu(desc->bg_free_blocks_count))
-		return group;
-	
-	/*
-	 * We're going to place this inode in a different blockgroup from its
-	 * parent.  We want to cause files in a common directory to all land in
-	 * the same blockgroup.  But we want files which are in a different
-	 * directory which shares a blockgroup with our parent to land in a
-	 * different blockgroup.
-	 *
-	 * So add our directory's i_ino into the starting point for the hash.
-	 */
-	group = (group + parent->i_ino) % ngroups;
-
-	/*
-	 * Use a quadratic hash to find a group with a free inode and some free
-	 * blocks.
-	*/ 
-	for (i = 1; i < ngroups; i <<= 1) {
-		group += i;
-		if (group >= ngroups)
-			group -= ngroups;
+		group = parent_group;
+		
 		desc = ext3_get_group_desc (sb, group, &bh);
 		if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
 				le16_to_cpu(desc->bg_free_blocks_count))
 			return group;
+		
+		/*
+		 * We're going to place this inode in a different blockgroup from its
+		 * parent.  We want to cause files in a common directory to all land in
+		 * the same blockgroup.  But we want files which are in a different
+		 * directory which shares a blockgroup with our parent to land in a
+		 * different blockgroup.
+		 *
+		 * So add our directory's i_ino into the starting point for the hash.
+		 */
+		group = (group + parent->i_ino) % ngroups;
+	
+		/*
+		 * Use a quadratic hash to find a group with a free inode and some free
+		 * blocks.
+		*/ 
+		for (i = 1; i < ngroups; i <<= 1) {
+			group += i;
+			if (group >= ngroups)
+				group -= ngroups;
+			desc = ext3_get_group_desc (sb, group, &bh);
+			if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
+					le16_to_cpu(desc->bg_free_blocks_count))
+				return group;
+		}
 	}
-	/*
+	/* Everything failed
 	 * That failed: try linear search for a free inode, even if that group
 	 * has no free blocks.
-	 
-	group = parent_group;
 	*/
+	group = parent_group;
 	for (i = 0; i < ngroups; i++) {
 		if (++group >= ngroups)
 			group = 0;
 		desc = ext3_get_group_desc (sb, group, &bh);
 		if (desc && le16_to_cpu(desc->bg_free_inodes_count))
+		{
+			set_group_num(current->comm, start, group);
 			return group;
+		}
 	}
-
 	return -1;
 }
 
