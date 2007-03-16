@@ -29,7 +29,7 @@ void init_appl_ll()
 void add_appl(char *name)
 {
 	struct atfs_appl *temp;
-	temp = (struct atfs_appl *)vmalloc(sizeof(struct atfs_appl));  // TODO: find the appropriate kernel space memory alloc function 
+	temp = (struct atfs_appl *)vmalloc(sizeof(struct atfs_appl));
 	strcpy(temp->appl_name,name);
 	printk(KERN_ALERT "ADDING APPLICATION = %s\n",temp->appl_name);
 	INIT_LIST_HEAD(&temp->acc_pat1.acc_pat_list);
@@ -52,7 +52,7 @@ void add_acc_pat(char appl_name[255],int pat_no,int group_no)
 			temp->pat_no = pat_no;
 			temp->alloc_group_num = group_no;
 			INIT_LIST_HEAD(&temp->comp1.acc_pat_comp_list);
-			INIT_LIST_HEAD(&temp->alloc_group_list);
+			INIT_LIST_HEAD(&temp->list1.alloc_group_list);
 			list_add_tail(&(temp->acc_pat_list),&(appl_temp->acc_pat1.acc_pat_list));
 			printk(KERN_ALERT "Adding Access pattern no %d for appl %s and grp no %d\n",pat_no,appl_name,group_no);
 			return ;
@@ -103,29 +103,13 @@ void add_comp_to_acc_pat(char appl_name[255],int pat_no,struct atfs_acc_pat_comp
 	}
 	//NOT FOUND ROUTINE
 }
-
-void add_group_num (struct atfs_acc_pat * acc_pat, int group_num)
-{
-	struct atfs_alloc_group *temp_alloc_group,*new_alloc_group;
-	struct list_head *pos_alloc_group;
-	
-	if(!list_empty(&acc_pat->alloc_group_list))
-	list_for_each(pos_alloc_group, &acc_pat->alloc_group_list)
-	{
-		temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
-		if(temp_alloc_group->group_no==group_num) return;
-	}
-	printk("Access pattern didnt have this group..adding %d\n",group_num);
-	new_alloc_group = (struct atfs_alloc_group *) vmalloc(sizeof(struct atfs_alloc_group));
-	new_alloc_group->group_no = group_num;	
-	list_add_tail(&(new_alloc_group->alloc_group_list),&(acc_pat->alloc_group_list));
-}
+/* Add group number to the the specific access pattern */
 
 
-
+/* find group number of given file path */
 int find_group(char *path, struct super_block *sb)
 {
-	struct dentry *dentry, *parent;
+	struct dentry *dentry=NULL, *parent;
 	char *path_comp;
 	struct inode *inode=NULL;
 	struct buffer_head *bh;
@@ -133,7 +117,8 @@ int find_group(char *path, struct super_block *sb)
 	int i,bg;
 	
 	//show_orphan_list(sb);
-	dentry = (struct dentry *) vmalloc(sizeof(struct dentry));
+	//dentry = (struct dentry *) vmalloc(sizeof(struct dentry));
+	//dentry = &alloc_dentry;
 	parent=sb->s_root;
 	path_comp=(char *)vmalloc(EXT3_NAME_LEN);
 	//inode = sb->s_root->d_inode;
@@ -164,18 +149,26 @@ int find_group(char *path, struct super_block *sb)
 	{
 		while(*path=='/') 
 		{
-		//	printk(KERN_ALERT "-%c-%c- ",*path,*(path+1));
+			//printk(KERN_ALERT "-%c-%c- ",*path,*(path+1));
 			path++;
 		}
 		if(*path=='\0') 
 			break;
-	//	printk(KERN_INFO "--%c--", *path);
+		//printk(KERN_INFO "--%c--", *path);
 		i=0;
 		while(*path!='/'&&*path!='\0')
-			path_comp[i++]=*path++;
+		{
+			//printk("Lets try printing this..%c\n", *path);
+			path_comp[i++]=*path;
+			path++;
+		}
+		//printk("Completed comp finding loop\n");
 		path_comp[i]='\0';
-	//	printk(KERN_ALERT "Searching for %s in %s\n", path_comp, parent->d_name.name);
+		printk(KERN_ALERT "Searching for %s ", path_comp);
+		printk("in %s\n", parent->d_name.name);
+
 		dentry = d_alloc_name(parent, path_comp);
+		
 		bh = ext3_find_entry(dentry,&de);
 		if (bh) 
 		{
@@ -186,9 +179,9 @@ int find_group(char *path, struct super_block *sb)
 			if (!inode)
 				return -EACCES;
 			//atomic_inc(&inode->i_count);
-			//d_instantiate(dentry, inode);
-			//parent = dentry;			
-			parent=d_splice_alias(inode,dentry);
+			d_instantiate(dentry, inode);
+			parent = dentry;			
+			//parent=d_splice_alias(inode,dentry);
 		}
 		else
 		{
@@ -206,6 +199,8 @@ int find_group(char *path, struct super_block *sb)
 			}			
 			//dump_orphan_list(sb,EXT3_SB(sb));
 			//show_orphan_list(sb);	
+			//vfree(alloc_dentry);
+			vfree(path_comp);   // Freeing path_comp ... (nakul)
 			return -2;				//return some default
 		}
 	}
@@ -223,6 +218,7 @@ int find_group(char *path, struct super_block *sb)
 		//dump_orphan_list(sb,EXT3_SB(sb));
 		//iput(inode);
 		//show_orphan_list(sb);
+		//vfree(dentry);
 		return bg;
 	}
 	return -2;
@@ -315,7 +311,7 @@ struct list_head * find_group_num(char appl_name[255],char *path,int *estd_size)
 	while(path[i]!='/'&&i>0) i--;
 	memcpy(dir,path,i+1);
 	dir[i+1]=0;
-	printk("parent path - %s\n",	dir);
+	//printk("parent path - %s\n",	dir);
 	
 	//printk(KERN_ALERT "find_group_num():Finding %s %s\n",appl_name,path);
 	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
@@ -335,7 +331,8 @@ struct list_head * find_group_num(char appl_name[255],char *path,int *estd_size)
 						if(!strcmp(comp_temp->path,dir))
 						{
 							*estd_size = comp_temp->estd_size;
-							return &appl_pat_temp->alloc_group_list;
+							vfree(dir);
+							return &appl_pat_temp->list1.alloc_group_list;
 						}
 					}
 					else
@@ -343,13 +340,15 @@ struct list_head * find_group_num(char appl_name[255],char *path,int *estd_size)
 						if(!strcmp(comp_temp->path,path))
 						{
 							*estd_size = comp_temp->estd_size;
-							return &appl_pat_temp->alloc_group_list; 
+							vfree(dir);
+							return &appl_pat_temp->list1.alloc_group_list; 
 						}
 					}
 				} 
 			}
 		}
 	}
+	vfree(dir);
 	return NULL;   
 }
 void set_group_num(char appl_name[255],char *path,int group)
@@ -386,23 +385,50 @@ void set_group_num(char appl_name[255],char *path,int group)
 				list_for_each(comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
 				{
 					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
+					//printk("Setting group num %d, comparing %s with %s", group,path,  comp_temp->path);
 					if(comp_temp->type==ATFS_COMP_DIR)
 					{
 						if(!strcmp(comp_temp->path,dir))
 						{
+							vfree(dir);
 							add_group_num(appl_pat_temp,group);
 							return;
 						}							
 					}
-					else
-						if(!strcmp(comp_temp->path,path))
+					else {
+						if(!strcmp(comp_temp->path,path)){
 							add_group_num(appl_pat_temp,group); 
-						return;
+							vfree(dir);
+							return;}
+						}
 					
 				} 
 			}
 		}
-	}}
+	}
+}
+void add_group_num (struct atfs_acc_pat * acc_pat, int group_num)
+{
+	struct atfs_alloc_group *temp_alloc_group,*new_alloc_group;
+	struct list_head *pos_alloc_group;
+	
+	printk("Need to add group %d", group_num);
+	//if(!list_empty(&acc_pat->list1.alloc_group_list))
+	list_for_each(pos_alloc_group, &(acc_pat->list1.alloc_group_list))
+	{
+		temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
+		printk("Checking with %d\n", temp_alloc_group->group_no);
+		if(temp_alloc_group->group_no==group_num) {
+			printk("Found match\n");
+			return;
+		}
+	}
+	printk("Access pattern didnt have this group..adding %d\n",group_num);
+	new_alloc_group = (struct atfs_alloc_group *) vmalloc(sizeof(struct atfs_alloc_group));
+	new_alloc_group->group_no = group_num;	
+	list_add_tail(&(new_alloc_group->alloc_group_list),&(acc_pat->list1.alloc_group_list));
+}
+
 
 int find_file_estd_size(char appl_name[255],char *path)
 {

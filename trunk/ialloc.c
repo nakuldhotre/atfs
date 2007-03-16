@@ -354,12 +354,13 @@ fallback:
 /* check for the patterns alloc_group_num..if it's zero find group with */
 char * find_path(struct inode *inode, struct super_block *sb)
 {
-	char *start,*buf;
+	char *start,*buf,*retbuf;
 	int len;
 	struct dentry *dentry,*dentrycopy;
 	
 	
 	buf = (char *)vmalloc(PATH_MAX);
+	retbuf = (char *)vmalloc(PATH_MAX);
 	//strcpy(buf,"/file10");
 	//return buf;
 	dentry = d_find_alias(inode);
@@ -402,12 +403,15 @@ char * find_path(struct inode *inode, struct super_block *sb)
 		}
 		dput(dentrycopy);
 		//printk(KERN_ALERT "successfully returning from path_find\n");
-		return start;
+		strcpy(retbuf,start);
+		vfree(buf);
+		return retbuf;
 	}
+	vfree(buf);
 	return NULL;
 }
 
-
+/* find a group for normal file*/
 static int find_group_other(struct super_block *sb, struct inode *parent, struct nameidata *nd)
 {
 	int parent_group = EXT3_I(parent)->i_block_group;
@@ -474,6 +478,7 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 			//search allocated groups for free inode and free block
 			//if no free block in allocated groups
 			//search for free inode only
+			//printk("Creating small file %s\n", start); //(nakul)
 			has_free_inode = -1;
 			list_for_each(pos_alloc_group,alloc_group_list)
 			{
@@ -486,15 +491,34 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 					if(le16_to_cpu(desc->bg_free_blocks_count))
 					{
 						set_group_num(current->comm, start, group);
+						// printk("Allocated\n"); //(nakul)
+						vfree(buf);
 						return group;
 					}
 				}
 			}
+			group = parent_group;
+
 			if(has_free_inode > -1)
 			{	
 				group = has_free_inode;
 				set_group_num(current->comm, start, group);
+				//printk("Just inode\n");
+				vfree(buf);
 				return group;
+			}
+			for (i = 0; i < ngroups; i++) 
+			{
+				if (++group >= ngroups)
+					group = 0;
+				desc = ext3_get_group_desc (sb, group, &bh);
+				if (desc && (le16_to_cpu(desc->bg_free_inodes_count)==EXT3_SB(sb)->s_inodes_per_group))
+				{
+					set_group_num(current->comm, start, group); //this group now allocated to this access pattern
+					printk("Free group\n");
+					vfree(buf);
+					return group;
+				}
 			}	
 
 		case ATFS_LARGE_FILE:
@@ -502,6 +526,7 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 			//search for allocated group with 3/16 free space
 			//3/16 = 3/4 * 1/4 as 3/4 space for large files and 4 large files per group
 			//TODO: MAKE THESE NUMBERS MACROS
+			printk("Creating large file %s\n", start);
 			list_for_each(pos_alloc_group,alloc_group_list)
 			{
 				temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
@@ -513,6 +538,8 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 					(le16_to_cpu(desc->bg_free_blocks_count)>=(3*(EXT3_SB(sb)->s_blocks_per_group/16))))
 				{
 					set_group_num(current->comm, start, group);
+					printk("Allocated\n");
+					vfree(buf);
 					return group;
 				}
 			}
@@ -527,6 +554,8 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 				if (desc && (le16_to_cpu(desc->bg_free_inodes_count)==EXT3_SB(sb)->s_inodes_per_group))
 				{
 					set_group_num(current->comm, start, group); //this group now allocated to this access pattern
+					printk("Freeee group\n");
+					vfree(buf);
 					return group;
 				}
 			}
@@ -542,12 +571,15 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 					(le16_to_cpu(desc->bg_free_blocks_count)>=(3*(EXT3_SB(sb)->s_blocks_per_group/16))))
 				{
 					set_group_num(current->comm, start, group); //this group now allocated to this access pattern
+					printk("Unallocated\n");
+					vfree(buf);
 					return group;
 				}
 			}
 			break;
 		case ATFS_HUGE_FILE:
 			//search for free group
+			printk("Creating huge file %s\n", start);
 			group = parent_group;
 			for (i = 0; i < ngroups; i++) 
 			{
@@ -557,6 +589,8 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 				if (desc && (le16_to_cpu(desc->bg_free_inodes_count)==EXT3_SB(sb)->s_inodes_per_group))
 				{
 					set_group_num(current->comm, start, group); //this group now allocated to this access pattern
+					printk("Free group\n");
+					vfree(buf);
 					return group;
 				}
 			}
@@ -572,12 +606,13 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 				desc = ext3_get_group_desc (sb, group, &bh);
 				if(group < min_group)
 					min_group = group;
-				if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
+				/*if (desc && le16_to_cpu(desc->bg_free_inodes_count) &&
 					(le16_to_cpu(desc->bg_free_blocks_count)>=(3*(EXT3_SB(sb)->s_blocks_per_group/16))))
 				{
 					set_group_num(current->comm, start, group);
+					printk("Allocated\n");
 					return group;
-				}
+				}*/
 				if(le16_to_cpu(desc->bg_free_blocks_count)>max_free_blocks)
 				{
 					max_free_blocks = le16_to_cpu(desc->bg_free_blocks_count);
@@ -588,6 +623,8 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 			if((2*max_free_blocks) >= EXT3_SB(sb)->s_blocks_per_group)
 			{
 				set_group_num(current->comm, start, group);
+				printk("Allocated\n");
+				vfree(buf);
 				return group;
 			}
 			//search for any group having more than half free space
@@ -600,6 +637,7 @@ static int find_group_other(struct super_block *sb, struct inode *parent, struct
 				if (desc && (le16_to_cpu(desc->bg_free_inodes_count)==EXT3_SB(sb)->s_inodes_per_group))
 				{
 					set_group_num(current->comm, start, group);
+					vfree(buf);
 					return group;
 				}
 			}
@@ -717,7 +755,7 @@ struct inode *ext3_new_inode(handle_t *handle, struct inode * dir, int mode, str
 		}
 	} else 
 		group = find_group_other(sb, dir, nd);
-	//printk(KERN_ALERT  "Alloc_group = %d\n", group);
+	//printk(KERN_ALERT  "Alloc_group = %d\n", group);  //commented by (nakul)
 	err = -ENOSPC;
 	if (group == -1)
 		goto out;
