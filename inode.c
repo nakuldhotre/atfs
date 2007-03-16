@@ -416,12 +416,8 @@ static unsigned long ext3_find_near(struct inode *inode, Indirect *ind)
 	unsigned long colour;
 	unsigned long offset=0,inode_blocks;
 	int estd_size;
-	inode_blocks = EXT3_INODES_PER_GROUP(inode->i_sb)/(EXT3_BLOCK_SIZE(inode->i_sb)/EXT3_INODE_SIZE(inode->i_sb));
-	estd_size = find_file_estd_size(current->comm,find_path(inode,inode->i_sb));
-	//printk(KERN_ALERT "GOT BLOCK REQUEST FOR %ld type = %d\n",inode->i_ino,estd_size);
-	if(estd_size==2)
-			offset = (EXT3_BLOCKS_PER_GROUP(inode->i_sb)-inode_blocks)>>2;
-
+	char *filename;
+	
 	/* Try to find previous block */
 	for (p = ind->p - 1; p >= start; p--) {
 		if (*p)
@@ -436,6 +432,17 @@ static unsigned long ext3_find_near(struct inode *inode, Indirect *ind)
 	 * It is going to be referred to from the inode itself? OK, just put it
 	 * into the same cylinder group then.
 	 */
+	 
+	 /* ATFS PART */
+	 inode_blocks = EXT3_INODES_PER_GROUP(inode->i_sb)/(EXT3_BLOCK_SIZE(inode->i_sb)/EXT3_INODE_SIZE(inode->i_sb));
+	 filename = find_path(inode,inode->i_sb);
+	estd_size = find_file_estd_size(current->comm,filename);
+	if(filename)
+			vfree(filename);
+	//printk(KERN_ALERT "GOT BLOCK REQUEST FOR %ld type = %d\n",inode->i_ino,estd_size);
+	if(estd_size==ATFS_LARGE_FILE)    /* FILE TYPE LARGE */
+			offset = (EXT3_BLOCKS_PER_GROUP(inode->i_sb)-inode_blocks)>>2;
+
 	bg_start = (ei->i_block_group * EXT3_BLOCKS_PER_GROUP(inode->i_sb)) +
 		le32_to_cpu(EXT3_SB(inode->i_sb)->s_es->s_first_data_block);
 	//colour = (current->pid % 16) * (EXT3_BLOCKS_PER_GROUP(inode->i_sb) / 16);
@@ -807,9 +814,9 @@ int ext3_get_blocks_handle(handle_t *handle, struct inode *inode,
 	int blocks_to_boundary = 0;
 	int depth;
 	struct ext3_inode_info *ei = EXT3_I(inode);
-	int count = 0;
+	int count = 0,estd_size;
 	unsigned long first_block = 0;
-
+	char *filename;
 
 	J_ASSERT(handle != NULL || create == 0);
 	depth = ext3_block_to_path(inode,iblock,offsets,&blocks_to_boundary);
@@ -889,23 +896,31 @@ int ext3_get_blocks_handle(handle_t *handle, struct inode *inode,
 	 * Okay, we need to do block allocation.  Lazily initialize the block
 	 * allocation info here if necessary
 	*/
+	
+	/* ATFS SETTING RESERVATION WINDOW SIZE OF LARGE AND HUGE TYPE OF FILES */
 	if (S_ISREG(inode->i_mode) && (!ei->i_block_alloc_info))
 		ext3_init_block_alloc_info(inode);
+	//printk(KERN_ALERT "\n size  %d res = %d oldalloc = %d \n",inode->i_size,test_opt(inode->i_sb,RESERVATION),test_opt(inode->i_sb,OLDALLOC));
 	if(inode->i_size==0 && test_opt(inode->i_sb, RESERVATION)) //just created and hence we must try to set the window size
 	{
-		if(find_file_estd_size(current->comm,find_path(inode,inode->i_sb))==3 ) // if file type is huge set reservation window size to max
+		filename = find_path(inode,inode->i_sb);
+		estd_size = find_file_estd_size(current->comm,filename);
+		if(filename)
+			vfree(filename);
+		if(estd_size==ATFS_HUGE_FILE ) // if file type is huge set reservation window size to max
 		{
 			struct ext3_reserve_window_node *rsv = &ei->i_block_alloc_info->rsv_window_node;
 			rsv->rsv_goal_size = EXT3_MAX_RESERVE_BLOCKS;
 			printk(KERN_ALERT "Setting max reservation window size\n");
 		}
-		if(find_file_estd_size(current->comm,find_path(inode,inode->i_sb))==2) // large
+		if(estd_size==ATFS_LARGE_FILE) // large
 		{
 			struct ext3_reserve_window_node *rsv = &ei->i_block_alloc_info->rsv_window_node;
 			rsv->rsv_goal_size = 512;
 			printk(KERN_ALERT "Setting reservation window size 512 blocks\n");
 		}
 	}
+	/* END OF ATFS CODE */
 	goal = ext3_find_goal(inode, iblock, chain, partial);
 
 	/* the number of blocks need to allocate for [d,t]indirect blocks */
