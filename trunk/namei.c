@@ -2053,6 +2053,7 @@ end_rmdir:
 	return retval;
 }
 
+
 static int ext3_unlink(struct inode * dir, struct dentry *dentry)
 {
 	int retval;
@@ -2060,9 +2061,14 @@ static int ext3_unlink(struct inode * dir, struct dentry *dentry)
 	struct buffer_head * bh;
 	struct ext3_dir_entry_2 * de;
 	handle_t *handle;
+	char *path;
 
+	printk("Deleting file %s\n", dentry->d_name.name);
 	/* Initialize quotas before so that eventual writes go
 	 * in separate transaction */
+	path = find_path(dentry->d_inode,dentry->d_inode->i_sb);
+	atfs_unlink(current->comm, path, EXT3_I(dentry->d_inode)->i_block_group);
+	
 	DQUOT_INIT(dentry->d_inode);
 	handle = ext3_journal_start(dir, EXT3_DELETE_TRANS_BLOCKS(dir->i_sb));
 	if (IS_ERR(handle))

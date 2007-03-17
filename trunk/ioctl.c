@@ -164,8 +164,8 @@ int find_group(char *path, struct super_block *sb)
 		}
 		//printk("Completed comp finding loop\n");
 		path_comp[i]='\0';
-		printk(KERN_ALERT "Searching for %s ", path_comp);
-		printk("in %s\n", parent->d_name.name);
+		//printk(KERN_ALERT "Searching for %s ", path_comp);
+		//printk("in %s\n", parent->d_name.name);
 
 		dentry = d_alloc_name(parent, path_comp);
 		
@@ -420,12 +420,14 @@ void add_group_num (struct atfs_acc_pat * acc_pat, int group_num)
 		printk("Checking with %d\n", temp_alloc_group->group_no);
 		if(temp_alloc_group->group_no==group_num) {
 			printk("Found match\n");
+			temp_alloc_group->comp_count++;
 			return;
 		}
 	}
 	printk("Access pattern didnt have this group..adding %d\n",group_num);
 	new_alloc_group = (struct atfs_alloc_group *) vmalloc(sizeof(struct atfs_alloc_group));
 	new_alloc_group->group_no = group_num;	
+	new_alloc_group->comp_count = 1;
 	list_add_tail(&(new_alloc_group->alloc_group_list),&(acc_pat->list1.alloc_group_list));
 }
 
@@ -467,6 +469,62 @@ int find_file_estd_size(char appl_name[255],char *path)
 	}
 		return NOTFOUND;   
 }
+
+void atfs_unlink(char appl_name[255], char *path,int group)
+{
+	struct atfs_appl *appl_temp;
+	struct atfs_acc_pat *appl_pat_temp;
+	struct atfs_acc_pat_comp *comp_temp;
+	struct list_head *appl_pos,*appl_pat_pos,*comp_pos;
+	struct atfs_alloc_group *temp_alloc_group;
+	struct list_head *pos_alloc_group;
+
+	if(list_empty(&atfs_appl_ll.appl_list))
+	{
+		printk(KERN_ALERT "No application info present\n");
+		return -1;
+	}
+	printk(KERN_ALERT "Removing file %s for appl %s\n",path, appl_name);
+	list_for_each(appl_pos,&atfs_appl_ll.appl_list)
+	{
+		appl_temp = list_entry(appl_pos,struct atfs_appl, appl_list);
+		if(!strcmp(appl_temp->appl_name,appl_name))
+		{
+			list_for_each(appl_pat_pos,&(appl_temp->acc_pat1.acc_pat_list))
+			{
+				appl_pat_temp = list_entry(appl_pat_pos,struct atfs_acc_pat,acc_pat_list);
+				
+				list_for_each(comp_pos,&(appl_pat_temp->comp1.acc_pat_comp_list))
+				{
+					comp_temp = list_entry(comp_pos,struct atfs_acc_pat_comp,acc_pat_comp_list);
+					printk(KERN_ALERT "comparing with %s\n",comp_temp->path);
+					if(!strcmp(comp_temp->path,path))
+					{
+						//decrease the group numbers' comp_count and free the group_alloc if it reaches 0
+						printk("Searching %s's group %d\n", path, group);
+						list_for_each(pos_alloc_group, &(appl_pat_temp->list1.alloc_group_list))
+						{
+							temp_alloc_group = list_entry(pos_alloc_group,struct atfs_alloc_group,alloc_group_list);
+							if(temp_alloc_group->group_no==group)
+							{	
+								printk("Comp_count = %d\n", temp_alloc_group->comp_count);		
+								temp_alloc_group->comp_count--;
+								if(!temp_alloc_group->comp_count)
+								{
+									printk("called delete for this alloc_group\n");
+									list_del(&(temp_alloc_group->alloc_group_list));
+								}
+								return;								
+							}
+						}
+					}					
+				} 
+			}
+		}
+	}
+}
+
+
 struct ext3_our_struct info_array[255];
 __u8 info_array_count;
 
